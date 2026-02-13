@@ -1,5 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><Nullable>enable</Nullable>
-  <ImplicitUsings>enable</ImplicitUsings><Platforms>AnyCPU</Platforms><RuntimeIdentifier>win-x64</RuntimeIdentifier></PropertyGroup>
-  <ItemGroup><PackageReference Include="NAudio" Version="2.2.1" /></ItemGroup>
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>AnyCPU</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="HidSharp" Version="2.1.0" />
+  </ItemGroup>
 </Project>

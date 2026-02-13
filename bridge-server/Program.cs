@@ -18,8 +18,12 @@ double currentFilter = 60.0;
 double currentGenFreq = 25.0;
 bool isTestMode = false;
 
-// Mock for button monitor; real implementation would use HID polling
-var getMockButtons = () => new string[] { };
+// 模擬按鈕監測器 (實際上需要 HID 輪詢，此處提供介面讓 UI 展示)
+var getMockButtons = () => {
+    // 這裡可以手動加入按鈕名稱來測試 UI 反應
+    // 例如：return new[] { "Cross", "Square" };
+    return new string[] { };
+};
 
 app.MapGet("/status", () => {
     try {
@@ -34,7 +38,7 @@ app.MapGet("/status", () => {
             buttons = getMockButtons()
         });
     } catch {
-        return Results.Ok(new { connected = false, device = "Searching..." });
+        return Results.Ok(new { connected = false, device = "正在搜尋..." });
     }
 });
 
