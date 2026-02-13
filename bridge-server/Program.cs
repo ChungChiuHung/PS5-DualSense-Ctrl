@@ -20,7 +20,7 @@ double currentFilter = 60.0;
 double currentGenFreq = 25.0;
 bool isTestMode = false;
 
-// --- HID 實時按鈕監測與控制邏輯 ---
+// --- HID Real-time Monitoring and Control ---
 ConcurrentBag<string> activeButtons = new ConcurrentBag<string>();
 const int VendorId = 0x054C; // Sony
 const int ProductId = 0x0CE6; // DualSense
@@ -37,7 +37,7 @@ _ = Task.Run(() => {
             var hidDevice = loader.GetHidDeviceOrNull(VendorId, ProductId);
             
             if (hidDevice != null && hidDevice.TryOpen(out HidStream stream)) {
-                Console.WriteLine($"[HID] DualSense 已連接。控制方式: X/O 調整頻率, L1/L2 調整強度。");
+                Console.WriteLine($"[HID] DualSense Connected. Control: X/O for Freq, L1/L2 for Gain.");
                 using (stream) {
                     byte[] buffer = new byte[hidDevice.GetMaxInputReportLength()];
                     while (true) {
@@ -45,12 +45,10 @@ _ = Task.Run(() => {
                         if (count > 0) {
                             var pressed = new List<string>();
                             
-                            // Byte 8: 幾何按鈕 (Square, Cross, Circle, Triangle)
                             byte b8 = buffer[8];
                             bool crossIsPressed = (b8 & 0x20) != 0;
                             bool circleIsPressed = (b8 & 0x40) != 0;
 
-                            // Byte 9: 功能按鈕 (L1, R1, L2, R2)
                             byte b9 = buffer[9];
                             bool l1IsPressed = (b9 & 0x01) != 0;
                             bool l2IsPressed = (b9 & 0x04) != 0;
@@ -62,41 +60,39 @@ _ = Task.Run(() => {
                             if (l1IsPressed) pressed.Add("L1");
                             if (l2IsPressed) pressed.Add("L2");
 
-                            // --- 頻率控制 (Cross / Circle) ---
+                            // --- Frequency Control (Cross / Circle) ---
                             if (crossIsPressed && !crossWasPressed) {
                                 currentFilter = Math.Min(60.0, currentFilter + 1.0);
                                 currentGenFreq = Math.Min(60.0, currentGenFreq + 1.0);
                                 engine.SetFilterFrequency(currentFilter);
                                 engine.SetTestToneFrequency(currentGenFreq);
-                                Console.WriteLine($"[控制] 頻率: {currentFilter}Hz");
+                                Console.WriteLine($"[Control] Frequency: {currentFilter}Hz");
                             }
                             if (circleIsPressed && !circleWasPressed) {
                                 currentFilter = Math.Max(25.0, currentFilter - 1.0);
                                 currentGenFreq = Math.Max(25.0, currentGenFreq - 1.0);
                                 engine.SetFilterFrequency(currentFilter);
                                 engine.SetTestToneFrequency(currentGenFreq);
-                                Console.WriteLine($"[控制] 頻率: {currentFilter}Hz");
+                                Console.WriteLine($"[Control] Frequency: {currentFilter}Hz");
                             }
 
-                            // --- 強度控制 (L1 / L2) ---
+                            // --- Intensity Control (L1 / L2) ---
                             if (l1IsPressed && !l1WasPressed) {
                                 currentGain = Math.Max(0.0f, currentGain - 0.1f);
                                 engine.SetGain(currentGain);
-                                Console.WriteLine($"[控制] 強度(Gain): {currentGain:F1}x");
+                                Console.WriteLine($"[Control] Gain: {currentGain:F1}x");
                             }
                             if (l2IsPressed && !l2WasPressed) {
                                 currentGain = Math.Min(5.0f, currentGain + 0.1f);
                                 engine.SetGain(currentGain);
-                                Console.WriteLine($"[控制] 強度(Gain): {currentGain:F1}x");
+                                Console.WriteLine($"[Control] Gain: {currentGain:F1}x");
                             }
 
-                            // 更新狀態紀錄以便進行邊緣偵測
                             crossWasPressed = crossIsPressed;
                             circleWasPressed = circleIsPressed;
                             l1WasPressed = l1IsPressed;
                             l2WasPressed = l2IsPressed;
 
-                            // 其他按鍵解析 (可選)
                             if ((b9 & 0x02) != 0) pressed.Add("R1");
                             if ((b9 & 0x08) != 0) pressed.Add("R2");
                             if ((b9 & 0x20) != 0) pressed.Add("Options");
@@ -107,7 +103,7 @@ _ = Task.Run(() => {
                     }
                 }
             }
-        } catch { /* 斷線重試 */ }
+        } catch { /* Silent Retry */ }
         Thread.Sleep(1000); 
     }
 });
@@ -133,6 +129,13 @@ app.MapPost("/start", () => {
     try {
         controller ??= DeviceManager.GetDualSenseDevice();
         engine.Start(controller);
+        
+        // CRITICAL: Apply all existing settings immediately after engine initialization
+        engine.SetGain(currentGain);
+        engine.SetFilterFrequency(currentFilter);
+        engine.SetTestToneFrequency(currentGenFreq);
+        engine.SetMode(isTestMode);
+        
         return Results.Ok(new { status = "Started" });
     } catch (Exception ex) { return Results.BadRequest(ex.Message); }
 });
