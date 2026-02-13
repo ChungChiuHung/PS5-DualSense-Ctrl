@@ -28,12 +28,12 @@ public class HapticSignalProcessor : ISampleProvider
     {
         _loopbackSource = loopbackSource;
         
-        // 初始化內部正弦波產生器用於測試音
+        // Initialize internal sine generator for manual testing
         _testToneSource = new SignalGenerator(loopbackSource.WaveFormat.SampleRate, 2)
         {
             Type = SignalGeneratorType.Sin,
             Frequency = 25,
-            Gain = 0.5 // 產生器的基礎音量
+            Gain = 0.5 
         };
 
         _currentActiveSource = _loopbackSource;
@@ -59,12 +59,11 @@ public class HapticSignalProcessor : ISampleProvider
 
     public int Read(float[] buffer, int offset, int count)
     {
-        // 從目前啟用的來源讀取
         int samplesRead = _currentActiveSource.Read(buffer, offset, count);
 
         for (int i = 0; i < samplesRead; i++)
         {
-            // 只有系統音訊需要過濾。測試音已經是乾淨的正弦波。
+            // Apply filter to loopback only; test tones are already pure sine
             if (!IsTestToneMode)
             {
                 buffer[offset + i] = _lpFilter.Transform(buffer[offset + i]);
@@ -72,7 +71,7 @@ public class HapticSignalProcessor : ISampleProvider
             
             buffer[offset + i] *= _gain;
 
-            // 安全限幅
+            // Hard clipping safety
             if (buffer[offset + i] > 1.0f) buffer[offset + i] = 1.0f;
             if (buffer[offset + i] < -1.0f) buffer[offset + i] = -1.0f;
         }

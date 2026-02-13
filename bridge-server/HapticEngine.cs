@@ -34,7 +34,6 @@ public class HapticEngine
         _output.Play();
     }
 
-    // 修正 CS9202：改用傳統的 if 判斷式
     public void SetGain(float value)
     {
         if (_processor != null) _processor.Gain = value;
@@ -64,7 +63,6 @@ public class HapticEngine
     }
 }
 
-// 修正 CS0246：將 Mapper 類別定義在同一個檔案中
 public class DualSenseByteMapper : IWaveProvider
 {
     private readonly ISampleProvider _source;
@@ -103,7 +101,7 @@ public class DualSenseByteMapper : IWaveProvider
             float leftSample = _sourceBuffer[inSampleOffset];
             float rightSample = _sourceBuffer[inSampleOffset + 1];
 
-            // 映射至 Channel 2 與 3 (觸覺馬達)
+            // Map to Channels 2 & 3 (Haptic Actuators)
             WriteFloatToBuffer(buffer, outFrameOffset + (2 * bytesPerSample), leftSample);
             WriteFloatToBuffer(buffer, outFrameOffset + (3 * bytesPerSample), rightSample);
         }
