@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DualSense Haptic Studio</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; background: #050507; color: white; font-family: 'Inter', sans-serif; overflow: hidden; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        .glass { background: rgba(15, 15, 25, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .btn-active { background: #3b82f6 !important; color: white !important; box-shadow: 0 0 15px rgba(59, 130, 246, 0.8); border-color: #60a5fa; transform: scale(1.05); }
+        input[type=range] { -webkit-appearance: none; background: transparent; cursor: pointer; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
+        input[type=range]::-webkit-slider-thumb { height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; -webkit-appearance: none; margin-top: -6px; box-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
+        .panel-header { font-size: 10px; font-weight: 800; letter-spacing: 0.2em; color: #4b5563; margin-bottom: 1rem; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- Left Controls Panel -->
+    <div class="fixed top-8 left-8 p-8 glass rounded-3xl w-80 shadow-2xl z-50">
+        <h1 class="text-2xl font-black mb-1 text-blue-500 tracking-tighter">HAPTIC.IO</h1>
+        <p id="status-text" class="text-gray-500 text-[10px] uppercase tracking-widest mb-8">Bridge: Searching...</p>
+
+        <div class="space-y-8">
+            <!-- Intensity Control -->
+            <div>
+                <div class="flex justify-between mb-2">
+                    <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Intensity (Gain)</label>
+                    <span id="gain-val" class="text-xs font-mono text-blue-300">1.5x</span>
+                </div>
+                <input type="range" id="gain-slider" min="0" max="5" step="0.1" value="1.5" class="w-full">
+            </div>
+
+            <!-- Frequency Passband (25Hz - 60Hz) -->
+            <div>
+                <div class="flex justify-between mb-2">
+                    <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Filter Cutoff</label>
+                    <span id="freq-val" class="text-xs font-mono text-blue-300">60Hz</span>
+                </div>
+                <input type="range" id="freq-slider" min="25" max="60" step="1" value="60" class="w-full">
+            </div>
+
+            <!-- Manual Frequency Generator (New Feature) -->
+            <div class="pt-4 border-t border-white/5">
+                <div class="flex justify-between mb-2">
+                    <label class="text-[10px] font-bold uppercase tracking-widest text-blue-400">Manual Generator</label>
+                    <span id="test-freq-val" class="text-xs font-mono text-blue-300">25Hz</span>
+                </div>
+                <input type="range" id="test-freq-slider" min="25" max="60" step="1" value="25" class="w-full mb-4">
+                <button id="test-tone-btn" class="w-full py-2 border border-blue-500/30 text-[10px] font-bold tracking-widest hover:bg-blue-500/10 rounded-lg transition-all">
+                    START TEST TONE
+                </button>
+            </div>
+
+            <button id="toggle-btn" class="w-full py-4 bg-blue-600 hover:bg-blue-500 transition-all rounded-xl font-black text-xs tracking-widest shadow-lg shadow-blue-900/40">
+                INITIALIZE BRIDGE
+            </button>
+        </div>
+    </div>
+
+    <!-- Right Input Monitor -->
+    <div class="fixed top-8 right-8 p-6 glass rounded-3xl w-64 shadow-2xl z-50">
+        <h2 class="panel-header">Input Monitor</h2>
+        <div id="input-grid" class="grid grid-cols-2 gap-2">
+            <!-- Buttons dynamically generated -->
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:5182";
+        let engineActive = false;
+        let testToneActive = false;
+
+        // Button Mapping
+        const BUTTONS = ['Cross', 'Circle', 'Square', 'Triangle', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3', 'PS'];
+        const inputGrid = document.getElementById('input-grid');
+        
+        BUTTONS.forEach(btn => {
+            const el = document.createElement('div');
+            el.id = `btn-${btn.toLowerCase()}`;
+            el.className = "text-[9px] py-2 border border-white/5 rounded-lg text-gray-700 transition-all duration-75 uppercase font-black text-center bg-white/5";
+            el.innerText = btn;
+            inputGrid.appendChild(el);
+        });
+
+        // --- Three.js Environment ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const core = new THREE.Mesh(
+            new THREE.IcosahedronGeometry(2.2, 1), 
+            new THREE.MeshPhongMaterial({ color: 0x3b82f6, wireframe: true, transparent: true, opacity: 0.6 })
+        );
+        scene.add(core);
+        scene.add(new THREE.PointLight(0xffffff, 1.5, 100));
+        scene.add(new THREE.AmbientLight(0x404040));
+        camera.position.z = 6;
+
+        // --- API Controls ---
+        const toggleBtn = document.getElementById('toggle-btn');
+        const gainSlider = document.getElementById('gain-slider');
+        const freqSlider = document.getElementById('freq-slider');
+        const testFreqSlider = document.getElementById('test-freq-slider');
+        const testToneBtn = document.getElementById('test-tone-btn');
+
+        toggleBtn.onclick = async () => {
+            const endpoint = engineActive ? '/stop' : '/start';
+            const res = await fetch(API_BASE + endpoint, { method: 'POST' }).catch(() => null);
+            if (res && res.ok) {
+                engineActive = !engineActive;
+                toggleBtn.innerText = engineActive ? "STOP ENGINE" : "INITIALIZE BRIDGE";
+                toggleBtn.className = engineActive 
+                    ? "w-full py-4 bg-red-600 hover:bg-red-500 transition-all rounded-xl font-black text-xs tracking-widest shadow-lg shadow-red-900/40" 
+                    : "w-full py-4 bg-blue-600 hover:bg-blue-500 transition-all rounded-xl font-black text-xs tracking-widest shadow-lg shadow-blue-900/40";
+            }
+        };
+
+        testToneBtn.onclick = async () => {
+            testToneActive = !testToneActive;
+            testToneBtn.innerText = testToneActive ? "STOP TEST TONE" : "START TEST TONE";
+            testToneBtn.classList.toggle('bg-blue-500/20');
+            // Logic to send a 'Test Mode' flag to backend would go here
+            await fetch(`${API_BASE}/test-mode/${testToneActive ? 'on' : 'off'}`, { method: 'POST' }).catch(() => null);
+        };
+
+        gainSlider.oninput = async () => {
+            document.getElementById('gain-val').innerText = gainSlider.value + "x";
+            await fetch(`${API_BASE}/gain/${gainSlider.value}`, { method: 'POST' }).catch(() => null);
+        };
+
+        freqSlider.oninput = async () => {
+            document.getElementById('freq-val').innerText = freqSlider.value + "Hz";
+            await fetch(`${API_BASE}/frequency/${freqSlider.value}`, { method: 'POST' }).catch(() => null);
+        };
+
+        testFreqSlider.oninput = async () => {
+            document.getElementById('test-freq-val').innerText = testFreqSlider.value + "Hz";
+            // Sends the direct frequency to the generator endpoint
+            await fetch(`${API_BASE}/generate/${testFreqSlider.value}`, { method: 'POST' }).catch(() => null);
+        };
+
+        async function updateStatus() {
+            try {
+                const res = await fetch(API_BASE + '/status');
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                
+                document.getElementById('status-text').innerText = `Device: ${data.device || "Searching..."}`;
+                document.getElementById('status-text').classList.replace('text-red-400', 'text-gray-500');
+
+                // Update Input Monitor
+                BUTTONS.forEach(btn => {
+                    const el = document.getElementById(`btn-${btn.toLowerCase()}`);
+                    if (data.buttons && data.buttons.includes(btn)) {
+                        el.classList.add('btn-active');
+                    } else {
+                        el.classList.remove('btn-active');
+                    }
+                });
+            } catch (e) { 
+                document.getElementById('status-text').innerText = "Bridge Offline - Check .NET Server";
+                document.getElementById('status-text').classList.add('text-red-400');
+            }
+        }
+
+        // Fast Polling for Responsive UI
+        setInterval(updateStatus, 100);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            core.rotation.y += 0.003;
+            core.rotation.x += 0.001;
+
+            if (engineActive || testToneActive) {
+                const intensity = engineActive ? 0.15 : 0.05;
+                const s = 1 + (Math.sin(Date.now() * 0.01) * intensity);
+                core.scale.set(s, s, s);
+                core.material.color.setHex(engineActive ? 0x3b82f6 : 0x60a5fa);
+                core.material.opacity = 0.8;
+            } else {
+                core.scale.set(1, 1, 1);
+                core.material.color.setHex(0x222222);
+                core.material.opacity = 0.3;
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
