@@ -129,7 +129,7 @@
         };
 
         gainSlider.oninput = async () => {
-            document.getElementById('gain-val').innerText = gainSlider.value + "x";
+            document.getElementById('gain-val').innerText = parseFloat(gainSlider.value).toFixed(1) + "x";
             await fetch(`${API_BASE}/gain/${gainSlider.value}`, { method: 'POST' }).catch(() => null);
         };
 
@@ -153,19 +153,25 @@
                 document.getElementById('status-text').innerText = `Device: ${data.device || "Searching..."}`;
                 document.getElementById('status-text').classList.replace('text-red-400', 'text-gray-500');
 
-                // 1. 同步 Filter 頻率捲軸 (如果使用者目前沒有在操作它)
+                // 1. 同步 Intensity (Gain) 捲軸
+                if (!gainSlider.matches(':active')) {
+                    gainSlider.value = data.gain;
+                    document.getElementById('gain-val').innerText = parseFloat(data.gain).toFixed(1) + "x";
+                }
+
+                // 2. 同步 Filter 頻率捲軸
                 if (!freqSlider.matches(':active')) {
                     freqSlider.value = data.filter;
                     document.getElementById('freq-val').innerText = Math.round(data.filter) + "Hz";
                 }
 
-                // 2. 同步 Manual Generator 頻率捲軸
+                // 3. 同步 Manual Generator 頻率捲軸
                 if (!testFreqSlider.matches(':active')) {
                     testFreqSlider.value = data.generatorFreq;
                     document.getElementById('test-freq-val').innerText = Math.round(data.generatorFreq) + "Hz";
                 }
 
-                // 3. 更新按鈕監控 UI
+                // 4. 更新按鈕監控 UI
                 BUTTONS.forEach(btn => {
                     const el = document.getElementById(`btn-${btn.toLowerCase()}`);
                     if (data.buttons && data.buttons.includes(btn)) {
@@ -180,7 +186,6 @@
             }
         }
 
-        // 每 100 毫秒輪詢一次狀態
         setInterval(updateStatus, 100);
 
         function animate() {
