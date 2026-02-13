@@ -21,13 +21,13 @@
 
     <div id="canvas-container"></div>
 
-    <!-- Left Controls Panel -->
+    <!-- 左側控制面板 -->
     <div class="fixed top-8 left-8 p-8 glass rounded-3xl w-80 shadow-2xl z-50">
         <h1 class="text-2xl font-black mb-1 text-blue-500 tracking-tighter">HAPTIC.IO</h1>
         <p id="status-text" class="text-gray-500 text-[10px] uppercase tracking-widest mb-8">Bridge: Searching...</p>
 
         <div class="space-y-8">
-            <!-- Intensity Control -->
+            <!-- 強度控制 (Gain) -->
             <div>
                 <div class="flex justify-between mb-2">
                     <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Intensity (Gain)</label>
@@ -36,7 +36,7 @@
                 <input type="range" id="gain-slider" min="0" max="5" step="0.1" value="1.5" class="w-full">
             </div>
 
-            <!-- Frequency Passband (25Hz - 60Hz) -->
+            <!-- 低通濾波頻率 (25Hz - 60Hz) -->
             <div>
                 <div class="flex justify-between mb-2">
                     <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Filter Cutoff</label>
@@ -45,7 +45,7 @@
                 <input type="range" id="freq-slider" min="25" max="60" step="1" value="60" class="w-full">
             </div>
 
-            <!-- Manual Frequency Generator (New Feature) -->
+            <!-- 手動測試音產生器 -->
             <div class="pt-4 border-t border-white/5">
                 <div class="flex justify-between mb-2">
                     <label class="text-[10px] font-bold uppercase tracking-widest text-blue-400">Manual Generator</label>
@@ -63,12 +63,10 @@
         </div>
     </div>
 
-    <!-- Right Input Monitor -->
+    <!-- 右側輸入監測器 -->
     <div class="fixed top-8 right-8 p-6 glass rounded-3xl w-64 shadow-2xl z-50">
         <h2 class="panel-header">Input Monitor</h2>
-        <div id="input-grid" class="grid grid-cols-2 gap-2">
-            <!-- Buttons dynamically generated -->
-        </div>
+        <div id="input-grid" class="grid grid-cols-2 gap-2"></div>
     </div>
 
     <script>
@@ -76,7 +74,7 @@
         let engineActive = false;
         let testToneActive = false;
 
-        // Button Mapping
+        // 按鈕清單
         const BUTTONS = ['Cross', 'Circle', 'Square', 'Triangle', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3', 'PS'];
         const inputGrid = document.getElementById('input-grid');
         
@@ -88,7 +86,7 @@
             inputGrid.appendChild(el);
         });
 
-        // --- Three.js Environment ---
+        // --- Three.js 背景動畫 ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -104,7 +102,7 @@
         scene.add(new THREE.AmbientLight(0x404040));
         camera.position.z = 6;
 
-        // --- API Controls ---
+        // --- API 控制項 ---
         const toggleBtn = document.getElementById('toggle-btn');
         const gainSlider = document.getElementById('gain-slider');
         const freqSlider = document.getElementById('freq-slider');
@@ -127,7 +125,6 @@
             testToneActive = !testToneActive;
             testToneBtn.innerText = testToneActive ? "STOP TEST TONE" : "START TEST TONE";
             testToneBtn.classList.toggle('bg-blue-500/20');
-            // Logic to send a 'Test Mode' flag to backend would go here
             await fetch(`${API_BASE}/test-mode/${testToneActive ? 'on' : 'off'}`, { method: 'POST' }).catch(() => null);
         };
 
@@ -143,10 +140,10 @@
 
         testFreqSlider.oninput = async () => {
             document.getElementById('test-freq-val').innerText = testFreqSlider.value + "Hz";
-            // Sends the direct frequency to the generator endpoint
             await fetch(`${API_BASE}/generate/${testFreqSlider.value}`, { method: 'POST' }).catch(() => null);
         };
 
+        // --- 核心更新邏輯：同步後端狀態 ---
         async function updateStatus() {
             try {
                 const res = await fetch(API_BASE + '/status');
@@ -156,7 +153,19 @@
                 document.getElementById('status-text').innerText = `Device: ${data.device || "Searching..."}`;
                 document.getElementById('status-text').classList.replace('text-red-400', 'text-gray-500');
 
-                // Update Input Monitor
+                // 1. 同步 Filter 頻率捲軸 (如果使用者目前沒有在操作它)
+                if (!freqSlider.matches(':active')) {
+                    freqSlider.value = data.filter;
+                    document.getElementById('freq-val').innerText = Math.round(data.filter) + "Hz";
+                }
+
+                // 2. 同步 Manual Generator 頻率捲軸
+                if (!testFreqSlider.matches(':active')) {
+                    testFreqSlider.value = data.generatorFreq;
+                    document.getElementById('test-freq-val').innerText = Math.round(data.generatorFreq) + "Hz";
+                }
+
+                // 3. 更新按鈕監控 UI
                 BUTTONS.forEach(btn => {
                     const el = document.getElementById(`btn-${btn.toLowerCase()}`);
                     if (data.buttons && data.buttons.includes(btn)) {
@@ -171,7 +180,7 @@
             }
         }
 
-        // Fast Polling for Responsive UI
+        // 每 100 毫秒輪詢一次狀態
         setInterval(updateStatus, 100);
 
         function animate() {
