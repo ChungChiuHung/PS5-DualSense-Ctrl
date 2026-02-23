@@ -3,216 +3,276 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DualSense Haptic Studio</title>
+    <title>DualSense Haptic Ctrl</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; background: #050507; color: white; font-family: 'Inter', sans-serif; overflow: hidden; }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@900&display=swap');
+        
+        body { margin: 0; background: #050507; color: #e2e8f0; font-family: 'JetBrains+Mono', monospace; overflow: hidden; user-select: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
-        .glass { background: rgba(15, 15, 25, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .btn-active { background: #3b82f6 !important; color: white !important; box-shadow: 0 0 15px rgba(59, 130, 246, 0.8); border-color: #60a5fa; transform: scale(1.05); }
+        .glass { background: rgba(10, 10, 15, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .orbitron { font-family: 'Orbitron', sans-serif; }
+        
+        /* Custom Sliders */
         input[type=range] { -webkit-appearance: none; background: transparent; cursor: pointer; }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
-        input[type=range]::-webkit-slider-thumb { height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; -webkit-appearance: none; margin-top: -6px; box-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
-        .panel-header { font-size: 10px; font-weight: 800; letter-spacing: 0.2em; color: #4b5563; margin-bottom: 1rem; text-transform: uppercase; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 2px; background: rgba(255, 255, 255, 0.1); }
+        input[type=range]::-webkit-slider-thumb { height: 12px; width: 12px; border-radius: 2px; background: #3b82f6; -webkit-appearance: none; margin-top: -5px; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
+
+        .btn-active { background: #3b82f6 !important; color: white !important; box-shadow: 0 0 15px rgba(59, 130, 246, 0.8); border-color: #60a5fa; transform: scale(1.02); }
+        
+        /* Analog Stick Visualizer */
+        .stick-track { width: 60px; height: 60px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; position: relative; }
+        .stick-dot { width: 12px; height: 12px; background: #3b82f6; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transition: transform 0.05s linear; }
+        
+        .label-xs { font-size: 9px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700; color: #64748b; }
     </style>
 </head>
 <body>
 
     <div id="canvas-container"></div>
 
-    <!-- 左側控制面板 -->
-    <div class="fixed top-8 left-8 p-8 glass rounded-3xl w-80 shadow-2xl z-50">
-        <h1 class="text-2xl font-black mb-1 text-blue-500 tracking-tighter">HAPTIC.IO</h1>
-        <p id="status-text" class="text-gray-500 text-[10px] uppercase tracking-widest mb-8">Bridge: Searching...</p>
-
-        <div class="space-y-8">
-            <!-- 強度控制 (Gain) -->
-            <div>
-                <div class="flex justify-between mb-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Intensity (Gain)</label>
-                    <span id="gain-val" class="text-xs font-mono text-blue-300">1.5x</span>
-                </div>
-                <input type="range" id="gain-slider" min="0" max="5" step="0.1" value="1.5" class="w-full">
+    <!-- Main Dashboard -->
+    <div class="fixed top-6 left-6 flex flex-col gap-4 z-50">
+        <div class="p-6 glass rounded-2xl w-80 shadow-2xl">
+            <h1 class="orbitron text-xl font-black text-blue-500 tracking-tighter mb-1">HAPTIC.CTRL</h1>
+            <div class="flex items-center gap-2 mb-6">
+                <div id="status-dot" class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
+                <p id="status-text" class="label-xs text-gray-500">Searching for Bridge...</p>
             </div>
 
-            <!-- 低通濾波頻率 (25Hz - 60Hz) -->
-            <div>
-                <div class="flex justify-between mb-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Filter Cutoff</label>
-                    <span id="freq-val" class="text-xs font-mono text-blue-300">60Hz</span>
+            <div class="space-y-6">
+                <!-- Gain Control -->
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="label-xs">Intensity (Gain)</label>
+                        <span id="gain-val" class="text-xs text-blue-400 font-bold">1.5x</span>
+                    </div>
+                    <input type="range" id="gain-slider" min="0" max="5" step="0.1" value="1.5" class="w-full">
                 </div>
-                <input type="range" id="freq-slider" min="25" max="60" step="1" value="60" class="w-full">
-            </div>
 
-            <!-- 手動測試音產生器 -->
-            <div class="pt-4 border-t border-white/5">
-                <div class="flex justify-between mb-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest text-blue-400">Manual Generator</label>
-                    <span id="test-freq-val" class="text-xs font-mono text-blue-300">25Hz</span>
+                <!-- Low Pass -->
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="label-xs">Haptic Cutoff</label>
+                        <span id="freq-val" class="text-xs text-blue-400 font-bold">60Hz</span>
+                    </div>
+                    <input type="range" id="freq-slider" min="25" max="60" step="1" value="60" class="w-full">
                 </div>
-                <input type="range" id="test-freq-slider" min="25" max="60" step="1" value="25" class="w-full mb-4">
-                <button id="test-tone-btn" class="w-full py-2 border border-blue-500/30 text-[10px] font-bold tracking-widest hover:bg-blue-500/10 rounded-lg transition-all">
-                    START TEST TONE
+
+                <!-- Generator -->
+                <div class="pt-4 border-t border-white/5">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="label-xs text-blue-500">Manual Sine Gen</label>
+                        <span id="test-freq-val" class="text-xs text-blue-300">25Hz</span>
+                    </div>
+                    <input type="range" id="test-freq-slider" min="25" max="60" step="1" value="25" class="w-full mb-3">
+                    <button id="test-tone-btn" class="w-full py-2 border border-blue-500/20 text-[10px] font-bold tracking-widest hover:bg-blue-500/10 rounded-lg transition-all">
+                        ACTIVATE TEST TONE
+                    </button>
+                </div>
+
+                <button id="toggle-btn" class="w-full py-4 bg-blue-600 hover:bg-blue-500 transition-all rounded-xl font-black text-[10px] tracking-widest">
+                    INITIALIZE ENGINE
                 </button>
             </div>
+        </div>
 
-            <button id="toggle-btn" class="w-full py-4 bg-blue-600 hover:bg-blue-500 transition-all rounded-xl font-black text-xs tracking-widest shadow-lg shadow-blue-900/40">
-                INITIALIZE BRIDGE
-            </button>
+        <!-- Sticks Visualizer -->
+        <div class="p-4 glass rounded-2xl flex justify-around items-center">
+            <div class="flex flex-col items-center gap-2">
+                <div class="stick-track"><div id="ls-dot" class="stick-dot"></div></div>
+                <span class="label-xs">LS</span>
+            </div>
+            <div class="flex flex-col items-center gap-2">
+                <div class="stick-track"><div id="rs-dot" class="stick-dot"></div></div>
+                <span class="label-xs">RS</span>
+            </div>
         </div>
     </div>
 
-    <!-- 右側輸入監測器 -->
-    <div class="fixed top-8 right-8 p-6 glass rounded-3xl w-64 shadow-2xl z-50">
-        <h2 class="panel-header">Input Monitor</h2>
-        <div id="input-grid" class="grid grid-cols-2 gap-2"></div>
+    <!-- Input Monitor Grid -->
+    <div class="fixed top-6 right-6 p-6 glass rounded-2xl w-64 shadow-2xl z-50">
+        <h2 class="label-xs mb-4">Device Input Stream</h2>
+        <div id="input-grid" class="grid grid-cols-2 gap-2">
+            <!-- Dynamically injected -->
+        </div>
+        <div class="mt-4 pt-4 border-t border-white/5 space-y-1">
+            <div class="flex justify-between label-xs"><span class="text-gray-600 italic">Up/Down:</span> <span>Hz +/-</span></div>
+            <div class="flex justify-between label-xs"><span class="text-gray-600 italic">Left/Right:</span> <span>Gain +/-</span></div>
+        </div>
     </div>
 
     <script>
         const API_BASE = "http://localhost:5182";
         let engineActive = false;
         let testToneActive = false;
+        let sticks = { lsX: 0, lsY: 0, rsX: 0, rsY: 0 };
 
-        // 按鈕清單
-        const BUTTONS = ['Cross', 'Circle', 'Square', 'Triangle', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3', 'PS'];
+        // Unified button list including Dpad
+        const BUTTONS = [
+            'DpadUp', 'DpadDown', 'DpadLeft', 'DpadRight',
+            'Cross', 'Circle', 'Square', 'Triangle',
+            'L1', 'R1', 'L2', 'R2',
+            'Share', 'Options', 'L3', 'R3', 'PS', 'Touchpad'
+        ];
+
         const inputGrid = document.getElementById('input-grid');
-        
         BUTTONS.forEach(btn => {
             const el = document.createElement('div');
             el.id = `btn-${btn.toLowerCase()}`;
-            el.className = "text-[9px] py-2 border border-white/5 rounded-lg text-gray-700 transition-all duration-75 uppercase font-black text-center bg-white/5";
-            el.innerText = btn;
+            el.className = "text-[8px] py-1.5 border border-white/5 rounded text-gray-700 bg-white/5 uppercase font-bold text-center transition-all duration-75";
+            el.innerText = btn.replace('Dpad', 'D-');
             inputGrid.appendChild(el);
         });
 
-        // --- Three.js 背景動畫 ---
+        // --- Three.js Logic ---
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-        const core = new THREE.Mesh(
-            new THREE.IcosahedronGeometry(2.2, 1), 
-            new THREE.MeshPhongMaterial({ color: 0x3b82f6, wireframe: true, transparent: true, opacity: 0.6 })
-        );
+        // Core Visualization
+        const coreGeo = new THREE.IcosahedronGeometry(2.5, 1);
+        const coreMat = new THREE.MeshPhongMaterial({ color: 0x3b82f6, wireframe: true, transparent: true, opacity: 0.2 });
+        const core = new THREE.Mesh(coreGeo, coreMat);
         scene.add(core);
-        scene.add(new THREE.PointLight(0xffffff, 1.5, 100));
-        scene.add(new THREE.AmbientLight(0x404040));
-        camera.position.z = 6;
 
-        // --- API 控制項 ---
+        // Movement Point
+        const point = new THREE.Mesh(
+            new THREE.SphereGeometry(0.15, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0x60a5fa })
+        );
+        const pointLight = new THREE.PointLight(0x3b82f6, 4, 15);
+        point.add(pointLight);
+        scene.add(point);
+
+        scene.add(new THREE.AmbientLight(0x404040, 2));
+        camera.position.z = 8;
+
+        // UI Selectors
         const toggleBtn = document.getElementById('toggle-btn');
         const gainSlider = document.getElementById('gain-slider');
         const freqSlider = document.getElementById('freq-slider');
         const testFreqSlider = document.getElementById('test-freq-slider');
         const testToneBtn = document.getElementById('test-tone-btn');
+        const statusDot = document.getElementById('status-dot');
 
+        // Actions
         toggleBtn.onclick = async () => {
             const endpoint = engineActive ? '/stop' : '/start';
             const res = await fetch(API_BASE + endpoint, { method: 'POST' }).catch(() => null);
             if (res && res.ok) {
                 engineActive = !engineActive;
-                toggleBtn.innerText = engineActive ? "STOP ENGINE" : "INITIALIZE BRIDGE";
-                toggleBtn.className = engineActive 
-                    ? "w-full py-4 bg-red-600 hover:bg-red-500 transition-all rounded-xl font-black text-xs tracking-widest shadow-lg shadow-red-900/40" 
-                    : "w-full py-4 bg-blue-600 hover:bg-blue-500 transition-all rounded-xl font-black text-xs tracking-widest shadow-lg shadow-blue-900/40";
+                toggleBtn.innerText = engineActive ? "STOP ENGINE" : "INITIALIZE ENGINE";
+                toggleBtn.style.background = engineActive ? "#ef4444" : "#2563eb";
             }
         };
 
         testToneBtn.onclick = async () => {
             testToneActive = !testToneActive;
-            testToneBtn.innerText = testToneActive ? "STOP TEST TONE" : "START TEST TONE";
-            testToneBtn.classList.toggle('bg-blue-500/20');
+            testToneBtn.innerText = testToneActive ? "STOP TEST TONE" : "ACTIVATE TEST TONE";
+            testToneBtn.classList.toggle('border-blue-500');
             await fetch(`${API_BASE}/test-mode/${testToneActive ? 'on' : 'off'}`, { method: 'POST' }).catch(() => null);
         };
 
-        gainSlider.oninput = async () => {
-            document.getElementById('gain-val').innerText = parseFloat(gainSlider.value).toFixed(1) + "x";
-            await fetch(`${API_BASE}/gain/${gainSlider.value}`, { method: 'POST' }).catch(() => null);
-        };
+        // Inputs
+        gainSlider.oninput = () => updateParam('/gain', gainSlider.value, 'gain-val', 'x');
+        freqSlider.oninput = () => updateParam('/frequency', freqSlider.value, 'freq-val', 'Hz');
+        testFreqSlider.oninput = () => updateParam('/generate', testFreqSlider.value, 'test-freq-val', 'Hz');
 
-        freqSlider.oninput = async () => {
-            document.getElementById('freq-val').innerText = freqSlider.value + "Hz";
-            await fetch(`${API_BASE}/frequency/${freqSlider.value}`, { method: 'POST' }).catch(() => null);
-        };
+        async function updateParam(path, val, displayId, suffix) {
+            document.getElementById(displayId).innerText = val + suffix;
+            await fetch(`${API_BASE}${path}/${val}`, { method: 'POST' }).catch(() => null);
+        }
 
-        testFreqSlider.oninput = async () => {
-            document.getElementById('test-freq-val').innerText = testFreqSlider.value + "Hz";
-            await fetch(`${API_BASE}/generate/${testFreqSlider.value}`, { method: 'POST' }).catch(() => null);
-        };
-
-        // --- 核心更新邏輯：同步後端狀態 ---
         async function updateStatus() {
             try {
                 const res = await fetch(API_BASE + '/status');
-                if (!res.ok) throw new Error();
                 const data = await res.json();
                 
-                document.getElementById('status-text').innerText = `Device: ${data.device || "Searching..."}`;
-                document.getElementById('status-text').classList.replace('text-red-400', 'text-gray-500');
+                if (data.connected) {
+                    statusDot.className = "w-1.5 h-1.5 rounded-full bg-green-500";
+                    document.getElementById('status-text').innerText = data.device;
+                    sticks = data.sticks;
 
-                // 1. 同步 Intensity (Gain) 捲軸
-                if (!gainSlider.matches(':active')) {
-                    gainSlider.value = data.gain;
-                    document.getElementById('gain-val').innerText = parseFloat(data.gain).toFixed(1) + "x";
-                }
-
-                // 2. 同步 Filter 頻率捲軸
-                if (!freqSlider.matches(':active')) {
-                    freqSlider.value = data.filter;
-                    document.getElementById('freq-val').innerText = Math.round(data.filter) + "Hz";
-                }
-
-                // 3. 同步 Manual Generator 頻率捲軸
-                if (!testFreqSlider.matches(':active')) {
-                    testFreqSlider.value = data.generatorFreq;
-                    document.getElementById('test-freq-val').innerText = Math.round(data.generatorFreq) + "Hz";
-                }
-
-                // 4. 更新按鈕監控 UI
-                BUTTONS.forEach(btn => {
-                    const el = document.getElementById(`btn-${btn.toLowerCase()}`);
-                    if (data.buttons && data.buttons.includes(btn)) {
-                        el.classList.add('btn-active');
-                    } else {
-                        el.classList.remove('btn-active');
+                    // Sync sliders if not active
+                    if (!gainSlider.matches(':active')) {
+                        gainSlider.value = data.gain;
+                        document.getElementById('gain-val').innerText = parseFloat(data.gain).toFixed(1) + 'x';
                     }
-                });
+                    if (!freqSlider.matches(':active')) {
+                        freqSlider.value = data.filter;
+                        document.getElementById('freq-val').innerText = Math.round(data.filter) + 'Hz';
+                    }
+                    if (!testFreqSlider.matches(':active')) {
+                        testFreqSlider.value = data.generatorFreq;
+                        document.getElementById('test-freq-val').innerText = Math.round(data.generatorFreq) + 'Hz';
+                    }
+
+                    // Analog Visuals
+                    document.getElementById('ls-dot').style.transform = `translate(${-50 + sticks.lsX * 150}%, ${-50 + sticks.lsY * 150}%)`;
+                    document.getElementById('rs-dot').style.transform = `translate(${-50 + sticks.rsX * 150}%, ${-50 + sticks.rsY * 150}%)`;
+
+                    // Buttons
+                    BUTTONS.forEach(btn => {
+                        const el = document.getElementById(`btn-${btn.toLowerCase()}`);
+                        if (data.buttons.includes(btn)) el.classList.add('btn-active');
+                        else el.classList.remove('btn-active');
+                    });
+                } else {
+                    statusDot.className = "w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse";
+                    document.getElementById('status-text').innerText = "Searching...";
+                }
             } catch (e) { 
-                document.getElementById('status-text').innerText = "Bridge Offline - Check .NET Server";
-                document.getElementById('status-text').classList.add('text-red-400');
+                statusDot.className = "w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse";
+                document.getElementById('status-text').innerText = "Bridge Offline";
             }
         }
 
-        setInterval(updateStatus, 100);
+        setInterval(updateStatus, 80);
 
+        // Render loop
+        let orbitX = 0, orbitY = 0;
         function animate() {
             requestAnimationFrame(animate);
-            core.rotation.y += 0.003;
-            core.rotation.x += 0.001;
+            
+            // Move Point LS
+            point.position.x += sticks.lsX * 0.12;
+            point.position.y -= sticks.lsY * 0.12;
+            point.position.x = Math.max(-5, Math.min(5, point.position.x));
+            point.position.y = Math.max(-4, Math.min(4, point.position.y));
 
+            // View RS
+            orbitX += sticks.rsX * 0.04;
+            orbitY = Math.max(-1.5, Math.min(1.5, orbitY + sticks.rsY * 0.04));
+            
+            const r = 8;
+            camera.position.x = r * Math.sin(orbitX) * Math.cos(orbitY);
+            camera.position.z = r * Math.cos(orbitX) * Math.cos(orbitY);
+            camera.position.y = r * Math.sin(orbitY);
+            camera.lookAt(0, 0, 0);
+
+            core.rotation.y += 0.005;
             if (engineActive || testToneActive) {
-                const intensity = engineActive ? 0.15 : 0.05;
-                const s = 1 + (Math.sin(Date.now() * 0.01) * intensity);
-                core.scale.set(s, s, s);
-                core.material.color.setHex(engineActive ? 0x3b82f6 : 0x60a5fa);
-                core.material.opacity = 0.8;
+                const s = 1 + Math.sin(Date.now()*0.01) * 0.1;
+                core.scale.set(s,s,s);
+                core.material.opacity = 0.4;
             } else {
-                core.scale.set(1, 1, 1);
-                core.material.color.setHex(0x222222);
-                core.material.opacity = 0.3;
+                core.scale.set(1,1,1);
+                core.material.opacity = 0.1;
             }
+
             renderer.render(scene, camera);
         }
         animate();
 
-        window.addEventListener('resize', () => {
+        window.onresize = () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        };
     </script>
 </body>
 </html>

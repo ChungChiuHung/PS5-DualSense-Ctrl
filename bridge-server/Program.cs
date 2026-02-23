@@ -20,24 +20,21 @@ double currentFilter = 60.0;
 double currentGenFreq = 25.0;
 bool isTestMode = false;
 
-// --- HID Real-time Monitoring and Control ---
+// --- HID Real-time Data ---
 ConcurrentBag<string> activeButtons = new ConcurrentBag<string>();
-const int VendorId = 0x054C; // Sony
-const int ProductId = 0x0CE6; // DualSense
+float lsX = 0, lsY = 0, rsX = 0, rsY = 0;
+
+const int VendorId = 0x054C; 
+const int ProductId = 0x0CE6; 
 
 _ = Task.Run(() => {
-    bool crossWasPressed = false;
-    bool circleWasPressed = false;
-    bool l1WasPressed = false;
-    bool l2WasPressed = false;
-
     while (true) {
         try {
             var loader = DeviceList.Local;
             var hidDevice = loader.GetHidDeviceOrNull(VendorId, ProductId);
             
             if (hidDevice != null && hidDevice.TryOpen(out HidStream stream)) {
-                Console.WriteLine($"[HID] DualSense Connected. Control: X/O for Freq, L1/L2 for Gain.");
+                Console.WriteLine($"[HID] DualSense Connected. Input monitoring and Analog sticks active.");
                 using (stream) {
                     byte[] buffer = new byte[hidDevice.GetMaxInputReportLength()];
                     while (true) {
@@ -45,68 +42,63 @@ _ = Task.Run(() => {
                         if (count > 0) {
                             var pressed = new List<string>();
                             
-                            byte b8 = buffer[8];
-                            bool crossIsPressed = (b8 & 0x20) != 0;
-                            bool circleIsPressed = (b8 & 0x40) != 0;
+                            // --- Analog Sticks (Byte 1-4) ---
+                            lsX = (buffer[1] - 128f) / 128f;
+                            lsY = (buffer[2] - 128f) / 128f;
+                            rsX = (buffer[3] - 128f) / 128f;
+                            rsY = (buffer[4] - 128f) / 128f;
 
-                            byte b9 = buffer[9];
-                            bool l1IsPressed = (b9 & 0x01) != 0;
-                            bool l2IsPressed = (b9 & 0x04) != 0;
+                            if (Math.Abs(lsX) < 0.05) lsX = 0;
+                            if (Math.Abs(lsY) < 0.05) lsY = 0;
+                            if (Math.Abs(rsX) < 0.05) rsX = 0;
+                            if (Math.Abs(rsY) < 0.05) rsY = 0;
+
+                            // --- D-Pad & Geometric Buttons (Byte 8) ---
+                            byte b8 = buffer[8];
+                            byte hat = (byte)(b8 & 0x0F);
+                            bool dUp = (hat == 0 || hat == 1 || hat == 7);
+                            bool dRight = (hat == 1 || hat == 2 || hat == 3);
+                            bool dDown = (hat == 3 || hat == 4 || hat == 5);
+                            bool dLeft = (hat == 5 || hat == 6 || hat == 7);
+
+                            if (dUp) pressed.Add("DpadUp");
+                            if (dDown) pressed.Add("DpadDown");
+                            if (dLeft) pressed.Add("DpadLeft");
+                            if (dRight) pressed.Add("DpadRight");
 
                             if ((b8 & 0x10) != 0) pressed.Add("Square");
-                            if (crossIsPressed) pressed.Add("Cross");
-                            if (circleIsPressed) pressed.Add("Circle");
+                            if ((b8 & 0x20) != 0) pressed.Add("Cross");
+                            if ((b8 & 0x40) != 0) pressed.Add("Circle");
                             if ((b8 & 0x80) != 0) pressed.Add("Triangle");
-                            if (l1IsPressed) pressed.Add("L1");
-                            if (l2IsPressed) pressed.Add("L2");
 
-                            // --- Frequency Control (Cross / Circle) ---
-                            if (crossIsPressed && !crossWasPressed) {
-                                currentFilter = Math.Min(60.0, currentFilter + 1.0);
-                                currentGenFreq = Math.Min(60.0, currentGenFreq + 1.0);
-                                engine.SetFilterFrequency(currentFilter);
-                                engine.SetTestToneFrequency(currentGenFreq);
-                                Console.WriteLine($"[Control] Frequency: {currentFilter}Hz");
-                            }
-                            if (circleIsPressed && !circleWasPressed) {
-                                currentFilter = Math.Max(25.0, currentFilter - 1.0);
-                                currentGenFreq = Math.Max(25.0, currentGenFreq - 1.0);
-                                engine.SetFilterFrequency(currentFilter);
-                                engine.SetTestToneFrequency(currentGenFreq);
-                                Console.WriteLine($"[Control] Frequency: {currentFilter}Hz");
-                            }
-
-                            // --- Intensity Control (L1 / L2) ---
-                            if (l1IsPressed && !l1WasPressed) {
-                                currentGain = Math.Max(0.0f, currentGain - 0.1f);
-                                engine.SetGain(currentGain);
-                                Console.WriteLine($"[Control] Gain: {currentGain:F1}x");
-                            }
-                            if (l2IsPressed && !l2WasPressed) {
-                                currentGain = Math.Min(5.0f, currentGain + 0.1f);
-                                engine.SetGain(currentGain);
-                                Console.WriteLine($"[Control] Gain: {currentGain:F1}x");
-                            }
-
-                            crossWasPressed = crossIsPressed;
-                            circleWasPressed = circleIsPressed;
-                            l1WasPressed = l1IsPressed;
-                            l2WasPressed = l2IsPressed;
-
+                            // --- Shoulder & Function Buttons (Byte 9) ---
+                            byte b9 = buffer[9];
+                            if ((b9 & 0x01) != 0) pressed.Add("L1");
                             if ((b9 & 0x02) != 0) pressed.Add("R1");
+                            if ((b9 & 0x04) != 0) pressed.Add("L2");
                             if ((b9 & 0x08) != 0) pressed.Add("R2");
+                            if ((b9 & 0x10) != 0) pressed.Add("Share");
                             if ((b9 & 0x20) != 0) pressed.Add("Options");
-                            if ((buffer[10] & 0x01) != 0) pressed.Add("PS");
+                            if ((b9 & 0x40) != 0) pressed.Add("L3");
+                            if ((b9 & 0x80) != 0) pressed.Add("R3");
 
+                            // --- System Buttons (Byte 10) ---
+                            if ((buffer[10] & 0x01) != 0) pressed.Add("PS");
+                            if ((buffer[10] & 0x02) != 0) pressed.Add("Touchpad");
+
+                            // Note: Control overrides (linking buttons to gain/freq) have been removed.
+                            
                             activeButtons = new ConcurrentBag<string>(pressed);
                         }
                     }
                 }
             }
         } catch { /* Silent Retry */ }
-        Thread.Sleep(1000); 
+        Thread.Sleep(10); 
     }
 });
+
+app.MapGet("/", () => Results.Text("DualSense Haptic Bridge Running. Access via index.html."));
 
 app.MapGet("/status", () => {
     try {
@@ -118,57 +110,30 @@ app.MapGet("/status", () => {
             filter = currentFilter,
             generatorFreq = currentGenFreq,
             testMode = isTestMode,
-            buttons = activeButtons.ToArray() 
+            buttons = activeButtons.ToArray(),
+            sticks = new { lsX, lsY, rsX, rsY }
         });
     } catch {
         return Results.Ok(new { connected = false, device = "Searching..." });
     }
 });
 
-app.MapGet("/",() => Results.Ok("DualSense Haptics Bridge is running. Use /status for details."));
-
 app.MapPost("/start", () => {
     try {
         controller ??= DeviceManager.GetDualSenseDevice();
         engine.Start(controller);
-        
-        // CRITICAL: Apply all existing settings immediately after engine initialization
         engine.SetGain(currentGain);
         engine.SetFilterFrequency(currentFilter);
         engine.SetTestToneFrequency(currentGenFreq);
         engine.SetMode(isTestMode);
-        
         return Results.Ok(new { status = "Started" });
     } catch (Exception ex) { return Results.BadRequest(ex.Message); }
 });
 
-app.MapPost("/stop", () => {
-    engine.Stop();
-    return Results.Ok(new { status = "Stopped" });
-});
-
-app.MapPost("/gain/{value}", (float value) => {
-    currentGain = value;
-    engine.SetGain(currentGain);
-    return Results.Ok();
-});
-
-app.MapPost("/frequency/{value}", (double value) => {
-    currentFilter = value;
-    engine.SetFilterFrequency(value);
-    return Results.Ok();
-});
-
-app.MapPost("/generate/{value}", (double value) => {
-    currentGenFreq = value;
-    engine.SetTestToneFrequency(value);
-    return Results.Ok();
-});
-
-app.MapPost("/test-mode/{state}", (string state) => {
-    isTestMode = (state == "on");
-    engine.SetMode(isTestMode);
-    return Results.Ok(new { testMode = isTestMode });
-});
+app.MapPost("/stop", () => { engine.Stop(); return Results.Ok(); });
+app.MapPost("/gain/{value}", (float value) => { currentGain = value; engine.SetGain(value); return Results.Ok(); });
+app.MapPost("/frequency/{value}", (double value) => { currentFilter = value; engine.SetFilterFrequency(value); return Results.Ok(); });
+app.MapPost("/generate/{value}", (double value) => { currentGenFreq = value; engine.SetTestToneFrequency(value); return Results.Ok(); });
+app.MapPost("/test-mode/{state}", (string state) => { isTestMode = (state == "on"); engine.SetMode(isTestMode); return Results.Ok(); });
 
 app.Run("http://localhost:5182");
