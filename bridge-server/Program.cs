@@ -125,6 +125,8 @@ app.MapGet("/status", () => {
     }
 });
 
+app.MapGet("/",() => Results.Ok("DualSense Haptics Bridge is running. Use /status for details."));
+
 app.MapPost("/start", () => {
     try {
         controller ??= DeviceManager.GetDualSenseDevice();
